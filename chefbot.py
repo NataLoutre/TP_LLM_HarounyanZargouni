@@ -43,8 +43,16 @@ def ask_chef(question: str, temperature: float = 0.7) -> str:
     return completion.choices[0].message.content
 
 
+@observe(name="run_partie_1")
 def run_temperature_tests():
     """1.3 - Jouez avec la temperature"""
+
+    # Ajout tags et metadata à la trace courante
+    langfuse.update_current_trace(
+        tags=["Partie 1", "Groupe_Natalène_Yacine"],
+        metadata={"experiment": "temperature_variation"}
+    )
+
     question = "J'ai récupéré des poireaux et des noix du marché ce matin. Qu'est-ce que je peux cuisiner avec pour ce soir ?"
     temps = [0.1, 0.7, 1.2]
 
@@ -181,15 +189,26 @@ def plan_weekly_menu(constraints: str) -> str:
 
     return completion.choices[0].message.content
 
-
+@observe(name="run_partie_2")
 def run_tests():
     # Test Partie 2
+
+    # Tags spécifiques à la partie 2
+    langfuse.update_current_trace(
+        tags=["Partie 2", "Groupe_Natalène_Yacine"],
+        metadata={"experiment": "menu_planner"}
+    )
+
     print("\n--- TEST PLANIFICATION MENU ---")
     menu = plan_weekly_menu("Pour 6 personnes. Repas Végétariens. Produits d'été uniquement.")
     print(menu)
 
 if __name__ == "__main__":
+    run_temperature_tests()
     run_tests()
     langfuse.flush()
     print("\nTraces envoyées à Langfuse.")
+
+
+# --- PARTIE 3 : EVALUATION ET QUALITE ---
 
