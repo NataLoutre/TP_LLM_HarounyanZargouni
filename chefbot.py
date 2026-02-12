@@ -18,7 +18,7 @@ langfuse = get_client()
 #Client Groq
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-
+# -----------------------------------------------------------------------
 # --- PARTIE 1 : PREMIER CONTACT ---
 @observe(name="ask_chef")
 def ask_chef(question: str, temperature: float = 0.7) -> str:
@@ -94,6 +94,7 @@ soit comparer plusieurs générations par température pour constater les diffé
 
 """
 
+# -----------------------------------------------------------------------
 # --- PARTIE 2 : LE CHEF QUI RÉFLÉCHIT ---
 
 @observe(name="get_plan")
@@ -204,11 +205,11 @@ def run_tests():
     print(menu)
 
 # if __name__ == "__main__":
-#     run_temperature_tests()
+#     run_tests()
 #     langfuse.flush()
 #     print("\nTraces envoyées à Langfuse.")
 
-
+# -----------------------------------------------------------------------
 # --- PARTIE 3 : EVALUATION ET QUALITE ---
 
 @observe(name="rule_evaluator")
@@ -280,10 +281,10 @@ def run_evaluation():
         ]
     )
 
-if __name__ == "__main__":
-    run_evaluation()
-    langfuse.flush()
-    print("\nTraces envoyées à Langfuse.")
+# if __name__ == "__main__":
+#     run_evaluation()
+#     langfuse.flush()
+#     print("\nTraces envoyées à Langfuse.")
 
 """
 Ce code renvoie :
@@ -297,3 +298,7 @@ elle reçoit un argument 'item' alors que nous avons défini 'input'.
 
 Nous avons cherché ensemble la source de l'erreur, sans résultats le jour J.
 """
+
+
+
+
