@@ -191,7 +191,7 @@ def plan_weekly_menu(constraints: str) -> str:
 
 @observe(name="run_partie_2")
 def run_tests():
-    # Test Partie 2
+    """Test Partie 2"""
 
     # Tags spécifiques à la partie 2
     langfuse.update_current_trace(
@@ -203,12 +203,97 @@ def run_tests():
     menu = plan_weekly_menu("Pour 6 personnes. Repas Végétariens. Produits d'été uniquement.")
     print(menu)
 
-if __name__ == "__main__":
-    run_temperature_tests()
-    run_tests()
-    langfuse.flush()
-    print("\nTraces envoyées à Langfuse.")
+# if __name__ == "__main__":
+#     run_temperature_tests()
+#     langfuse.flush()
+#     print("\nTraces envoyées à Langfuse.")
 
 
 # --- PARTIE 3 : EVALUATION ET QUALITE ---
 
+@observe(name="rule_evaluator")
+def rule_evaluator(**kwargs) -> dict:
+    """3.2 - Évaluateur Programmatique"""
+
+    output = kwargs.get("output", "")
+    expected = kwargs.get("expected_output", {})
+
+    output_lower = output.lower()
+    scores = {}
+    
+    # Interdits
+    must_avoid = expected.get("must_avoid", [])
+    found_forbidden = [i for i in must_avoid if i.lower() in output_lower]
+    scores["no_forbidden"] = 1.0 if not found_forbidden else 0.0
+    
+    # Requis
+    must_include = expected.get("must_include", [])
+    found_included = [i for i in must_include if i.lower() in output_lower]
+    scores["included_ratio"] = len(found_included) / len(must_include) if must_include else 1.0
+    
+    return scores
+
+@observe(name="llm_judge")
+def llm_judge(**kwargs) -> dict:
+    """# 3.3 - LLM Juge"""
+
+    question = kwargs.get("input", "")
+    output = kwargs.get("output", "")
+    expected = kwargs.get("expected_output", {})
+
+    prompt = f"""Note ce menu (0.0 à 1.0) selon :
+    1. Pertinence (respect de {question})
+    2. Créativité
+    3. Praticité
+    Réponds uniquement en JSON : {{"pertinence": 0, "creativite": 0, "praticite": 0}}
+    Menu : {output}"""
+    
+    completion = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"}
+    )
+    return json.loads(completion.choices[0].message.content)
+
+@observe(name="run_partie_3")
+def run_evaluation():
+    """3.4 - Lancer l'expérience"""
+
+    # Tags spécifiques à la partie 3
+    langfuse.update_current_trace(
+        tags=["Partie 3", "Groupe_Natalène_Yacine"],
+        metadata={"experiment": "menu_evaluation"}
+    )
+    
+    my_dataset = langfuse.get_dataset("chefbot-menu-eval-Natalène_Yacine")
+    print("\n--- EVALUATION ---")
+
+    
+    # Liste des items
+    langfuse.run_experiment(
+        name="Partie 3 Natalène_Yacine",
+        data=my_dataset.items,
+        task=lambda input: plan_weekly_menu(input["constraints"]),
+        evaluators=[
+            rule_evaluator,
+            llm_judge
+        ]
+    )
+
+if __name__ == "__main__":
+    run_evaluation()
+    langfuse.flush()
+    print("\nTraces envoyées à Langfuse.")
+
+"""
+Ce code renvoie :
+--- EVALUATION ---
+Item 0 failed: run_evaluation.<locals>.<lambda>() got an unexpected keyword argument 'item'
+Item 1 failed: run_evaluation.<locals>.<lambda>() got an unexpected keyword argument 'item'
+Item 2 failed: run_evaluation.<locals>.<lambda>() got an unexpected keyword argument 'item'
+
+Nous avons une erreur d'appel de la fonction lambda dans run_experiment : 
+elle reçoit un argument 'item' alors que nous avons défini 'input'.
+
+Nous avons cherché ensemble la source de l'erreur, sans résultats le jour J.
+"""
