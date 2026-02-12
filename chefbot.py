@@ -1,3 +1,4 @@
+import json
 import os
 from dotenv import load_dotenv
 from groq import Groq
@@ -17,6 +18,8 @@ langfuse = get_client()
 #Client Groq
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
+
+# --- PARTIE 1 : PREMIER CONTACT ---
 @observe(name="ask_chef")
 def ask_chef(question: str, temperature: float = 0.7) -> str:
     """
@@ -41,22 +44,23 @@ def ask_chef(question: str, temperature: float = 0.7) -> str:
 
 
 def run_temperature_tests():
+    """1.3 - Jouez avec la temperature"""
     question = "J'ai récupéré des poireaux et des noix du marché ce matin. Qu'est-ce que je peux cuisiner avec pour ce soir ?"
     temps = [0.1, 0.7, 1.2]
 
     for t in temps:
-        print(f"\n--- Test avec la Température : {t} ---")
+        print(f"\n--- TEST DE TEMPERATURE : {t} ---")
         reponse = ask_chef(question, temperature=t)
         print(reponse)
 
 
 
-if __name__ == "__main__":
-    run_temperature_tests()
+# if __name__ == "__main__":
+#     run_temperature_tests()
 
-    #  Envoi effectif des traces à Langfuse
-    langfuse.flush()
-    print("\nTraces envoyées à Langfuse.")
+#     #  Envoi effectif des traces à Langfuse
+#     langfuse.flush()
+#     print("\nTraces envoyées à Langfuse.")
 
 
 """
@@ -81,3 +85,111 @@ la génération. Pour observer un effet plus marqué, il faudrait soit un prompt
 soit comparer plusieurs générations par température pour constater les différences.
 
 """
+
+# --- PARTIE 2 : LE CHEF QUI RÉFLÉCHIT ---
+
+@observe(name="get_plan")
+def get_plan(constraints: str):
+    """2.1 : Planificateur de menu (décomposition en étapes)"""
+    prompt = f"""Analyse ces contraintes : {constraints}.
+            Décompose la création d'un menu de semaine en 3 étapes distinctes.
+            Réponds UNIQUEMENT en JSON avec le format suivant:
+            {{"etapes": ["etape1", "etape2", "etape3"]}}"""
+
+#            TEST ERREUR JSON :
+#            Ne décompose pas le menu de la semaine.
+#            Ne réponds pas en JSON, juste en texte brut selon ce format : etapes = 
+
+    for attempt in range(2):
+        try:
+            completion = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+
+            parsed = json.loads(completion.choices[0].message.content)
+
+            # Validation métier
+            if not isinstance(parsed, dict) or "etapes" not in parsed:
+                raise ValueError("JSON structure invalid: missing 'etapes'")
+
+            return parsed
+
+        except Exception as e:   # capture TOUT
+            try:
+                langfuse.event(
+                    name="json_parsing_error",
+                    level="ERROR",
+                    input=completion.choices[0].message.content if 'completion' in locals() else None,
+                    metadata={
+                        "error": str(e),
+                        "attempt": attempt + 1,
+                        "function": "get_plan"
+                    }
+                )
+                langfuse.flush()
+            except Exception:
+                print("Langfuse logging failed")
+                print("Original error:", e)
+
+            if attempt == 1:
+                raise
+
+    # 
+    raise RuntimeError("get_plan failed after retry — no valid JSON returned")
+
+
+
+@observe(name="execute_step")
+def execute_step(step_name: str, context: str):
+    """2.2 : Planificateur de menu (exécution d'une étape)"""
+    completion = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": f"Contexte actuel : {context}"},
+            {"role": "user", "content": f"Etape suivante : {step_name}"}
+        ]
+    )
+    return completion.choices[0].message.content
+
+
+@observe(name="plan_weekly_menu")
+def plan_weekly_menu(constraints: str) -> str:
+    """Fonction principale de la Partie 2"""
+
+    # 1. Planification
+    plan = get_plan(constraints)
+
+    # 2. Exécution des étapes
+    results = []
+    current_context = f"Contraintes accumulées : {constraints}"
+
+    for step in plan.get("etapes", []):
+        res = execute_step(step, current_context)
+        results.append(res)
+        current_context += f"\n{res}"
+
+    # 3. Synthèse finale
+    completion = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": "Tu es un créateur de menus."},
+            {"role": "user", "content": f"Assemble le tout en un menu cohérent : {' '.join(results)}"}
+        ]
+    )
+
+    return completion.choices[0].message.content
+
+
+def run_tests():
+    # Test Partie 2
+    print("\n--- TEST PLANIFICATION MENU ---")
+    menu = plan_weekly_menu("Pour 6 personnes. Repas Végétariens. Produits d'été uniquement.")
+    print(menu)
+
+if __name__ == "__main__":
+    run_tests()
+    langfuse.flush()
+    print("\nTraces envoyées à Langfuse.")
+
